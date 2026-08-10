@@ -4,16 +4,10 @@ from aiogram.fsm.context import FSMContext
 
 from states.states import DoctorRegistration
 from database import db
-
 from handlers.admin import notify_admins_new_doctor
-
 
 router = Router(name="doctor_registration")
 
-
-# ---------------------------------------------------------------------------
-# ФИО
-# ---------------------------------------------------------------------------
 
 @router.message(DoctorRegistration.full_name)
 async def process_full_name(
@@ -28,9 +22,7 @@ async def process_full_name(
         )
         return
 
-    await state.update_data(
-        full_name=name
-    )
+    await state.update_data(full_name=name)
 
     await state.set_state(
         DoctorRegistration.city
@@ -40,10 +32,6 @@ async def process_full_name(
         "В каком городе вы работаете?"
     )
 
-
-# ---------------------------------------------------------------------------
-# Город
-# ---------------------------------------------------------------------------
 
 @router.message(DoctorRegistration.city)
 async def process_city(
@@ -58,9 +46,7 @@ async def process_city(
         )
         return
 
-    await state.update_data(
-        city=city
-    )
+    await state.update_data(city=city)
 
     await state.set_state(
         DoctorRegistration.workplace
@@ -71,10 +57,6 @@ async def process_city(
         "(клиника / больница):"
     )
 
-
-# ---------------------------------------------------------------------------
-# Место работы
-# ---------------------------------------------------------------------------
 
 @router.message(DoctorRegistration.workplace)
 async def process_workplace(
@@ -98,14 +80,10 @@ async def process_workplace(
     )
 
     await message.answer(
-        "Укажите вашу специальность.\n\n"
-        "Например: врач-эндокринолог"
+        "Укажите вашу специальность "
+        "(например, «врач-эндокринолог»):"
     )
 
-
-# ---------------------------------------------------------------------------
-# Специальность
-# ---------------------------------------------------------------------------
 
 @router.message(DoctorRegistration.specialty)
 async def process_specialty(
@@ -134,10 +112,6 @@ async def process_specialty(
     )
 
 
-# ---------------------------------------------------------------------------
-# Опыт
-# ---------------------------------------------------------------------------
-
 @router.message(
     DoctorRegistration.experience_years
 )
@@ -150,14 +124,13 @@ async def process_experience(
             (message.text or "").strip()
         )
 
-        if not 0 <= years < 80:
+        if not (0 <= years < 80):
             raise ValueError
 
     except ValueError:
         await message.answer(
             "Пожалуйста, введите опыт работы "
-            "числом лет.\n\n"
-            "Например: 12"
+            "числом лет (например, 12)."
         )
         return
 
@@ -165,14 +138,11 @@ async def process_experience(
 
     user_id = message.from_user.id
 
-    # В БД запись создаётся/обновляется
-    # со статусом pending.
-    #
-    # Это также позволяет врачу, чья предыдущая
-    # заявка была отклонена, зарегистрироваться
-    # заново.
+    username = message.from_user.username
+
     await db.add_doctor(
         user_id=user_id,
+        username=username,
         full_name=data["full_name"],
         city=data["city"],
         workplace=data["workplace"],
@@ -184,21 +154,20 @@ async def process_experience(
 
     doctor = await db.get_doctor(user_id)
 
-    # Отправляем заявку администраторам
     await notify_admins_new_doctor(
         message.bot,
         doctor,
     )
 
     await message.answer(
-        "✅ <b>Анкета врача заполнена.</b>\n\n"
+        "✅ <b>Анкета заполнена.</b>\n\n"
+        "Она отправлена администратору "
+        "на проверку.\n\n"
         f"👤 ФИО: {data['full_name']}\n"
         f"🏙 Город: {data['city']}\n"
         f"🏥 Место работы: {data['workplace']}\n"
         f"🩺 Специальность: {data['specialty']}\n"
         f"📅 Опыт работы: {years} лет\n\n"
-        "⏳ Заявка отправлена администратору "
-        "на проверку.\n\n"
-        "После одобрения вы получите уведомление "
-        "и сможете пользоваться функциями врача."
+        "⏳ После подтверждения вы получите "
+        "доступ к списку пациентов."
     )

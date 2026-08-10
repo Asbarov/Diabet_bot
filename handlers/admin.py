@@ -9,15 +9,14 @@ from keyboards.keyboards import (
     admin_menu_keyboard,
     get_admin_only_keyboard,
 )
+from aiogram import Router, F, Bot
+from aiogram.types import Message, CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from config import ADMIN_IDS
+from database import db
 
 router = Router(name="admin")
-
-
-ADMIN_BUTTON = "🔧 Админ панель"
-DOCTORS_BUTTON = "👨‍⚕️ Список врачей"
-PENDING_BUTTON = "📥 Заявки врачей"
-BACK_BUTTON = "⬅️ Назад"
 
 
 def is_admin(user_id: int) -> bool:
@@ -31,14 +30,19 @@ STATUS_LABELS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Карточка врача
-# ---------------------------------------------------------------------------
+def telegram_link(user_id: int, username: str | None) -> str:
+    if username:
+        username = username.lstrip("@")
+        return f"https://t.me/{username}"
+
+    return f"tg://user?id={user_id}"
+
 
 def build_doctor_card(
     doc,
     prefix: str = "",
-):
+) -> tuple[str, "InlineKeyboardBuilder"]:
+
     text = (
         f"{prefix}"
         f"👨‍⚕️ <b>{doc['full_name']}</b>\n"
@@ -54,30 +58,30 @@ def build_doctor_card(
     builder = InlineKeyboardBuilder()
 
     if doc["status"] == "pending":
-
         builder.button(
             text="✅ Одобрить",
-            callback_data=(
-                f"adm_approve:{doc['user_id']}"
-            ),
+            callback_data=f"adm_approve:{doc['user_id']}",
         )
 
         builder.button(
             text="❌ Отклонить",
-            callback_data=(
-                f"adm_reject:{doc['user_id']}"
-            ),
+            callback_data=f"adm_reject:{doc['user_id']}",
         )
 
         builder.adjust(2)
 
     elif doc["status"] == "approved":
+        builder.button(
+            text="💬 Написать врачу",
+            url=telegram_link(
+                doc["user_id"],
+                doc["username"],
+            ),
+        )
 
         builder.button(
             text="🗑 Удалить врача",
-            callback_data=(
-                f"adm_delete:{doc['user_id']}"
-            ),
+            callback_data=f"adm_delete:{doc['user_id']}",
         )
 
         builder.adjust(1)
@@ -85,126 +89,121 @@ def build_doctor_card(
     return text, builder
 
 
-# ---------------------------------------------------------------------------
-# 🔧 Админ панель — постоянная Reply-кнопка
-# ---------------------------------------------------------------------------
+# ============================================================
+# ОТКРЫТИЕ АДМИН-ПАНЕЛИ
+# ============================================================
 
-@router.message(F.text == ADMIN_BUTTON)
-async def open_admin_panel(
-    message: Message,
-):
+@router.message(F.text == "🔧 Админ панель")
+async def admin_panel_button(message: Message):
     if not is_admin(message.from_user.id):
         return
 
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="📋 Заявки врачей",
+        callback_data="adm_menu:pending",
+    )
+
+    builder.button(
+        text="👨‍⚕️ Список врачей",
+        callback_data="adm_menu:all",
+    )
+
+    builder.adjust(1)
+
     await message.answer(
         "🔧 <b>Админ-панель</b>\n\n"
-        "Выберите нужный раздел:",
-        reply_markup=admin_menu_keyboard(),
+        "Выберите раздел:",
+        reply_markup=builder.as_markup(),
     )
 
 
-# ---------------------------------------------------------------------------
-# 📥 Заявки врачей
-# ---------------------------------------------------------------------------
+# ============================================================
+# ЗАЯВКИ ВРАЧЕЙ
+# ============================================================
 
-@router.message(F.text == PENDING_BUTTON)
-async def show_pending_doctors(
-    message: Message,
-):
-    if not is_admin(message.from_user.id):
+@router.callback_query(F.data == "adm_menu:pending")
+async def admin_menu_pending(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer(
+            "Недостаточно прав.",
+            show_alert=True,
+        )
         return
 
     pending = await db.get_pending_doctors()
 
     if not pending:
-        await message.answer(
-            "📥 <b>Заявки врачей</b>\n\n"
-            "Новых заявок нет. ✅",
-            reply_markup=admin_menu_keyboard(),
+        await callback.message.edit_text(
+            "📋 <b>Заявки врачей</b>\n\n"
+            "Новых заявок нет. ✅"
         )
+        await callback.answer()
         return
 
-    await message.answer(
-        f"📥 <b>Заявки врачей</b>\n\n"
-        f"Новых заявок: {len(pending)}"
+    await callback.message.edit_text(
+        f"📋 <b>Заявки врачей</b>\n\n"
+        f"На рассмотрении: {len(pending)}"
     )
 
     for doc in pending:
+        text, builder = build_doctor_card(doc)
 
-        text, builder = build_doctor_card(
-            doc,
-            prefix="🆕 <b>Новая заявка</b>\n\n",
-        )
-
-        await message.answer(
+        await callback.message.answer(
             text,
             reply_markup=builder.as_markup(),
         )
 
+    await callback.answer()
 
-# ---------------------------------------------------------------------------
-# 👨‍⚕️ Список подтверждённых врачей
-# ---------------------------------------------------------------------------
 
-@router.message(F.text == DOCTORS_BUTTON)
-async def show_approved_doctors(
-    message: Message,
-):
-    if not is_admin(message.from_user.id):
+# ============================================================
+# СПИСОК ПОДТВЕРЖДЁННЫХ ВРАЧЕЙ
+# ============================================================
+
+@router.callback_query(F.data == "adm_menu:all")
+async def admin_menu_all(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer(
+            "Недостаточно прав.",
+            show_alert=True,
+        )
         return
 
     doctors = await db.list_approved_doctors()
 
     if not doctors:
-        await message.answer(
+        await callback.message.edit_text(
             "👨‍⚕️ <b>Список врачей</b>\n\n"
-            "Подтверждённых врачей пока нет.",
-            reply_markup=admin_menu_keyboard(),
+            "Подтверждённых врачей пока нет."
         )
+
+        await callback.answer()
         return
 
-    await message.answer(
+    await callback.message.edit_text(
         f"👨‍⚕️ <b>Список врачей</b>\n\n"
         f"Подтверждённых врачей: {len(doctors)}"
     )
 
     for doc in doctors:
-
         text, builder = build_doctor_card(doc)
 
-        await message.answer(
+        await callback.message.answer(
             text,
             reply_markup=builder.as_markup(),
         )
 
-
-# ---------------------------------------------------------------------------
-# ⬅️ Назад из админки
-# ---------------------------------------------------------------------------
-
-@router.message(F.text == BACK_BUTTON)
-async def admin_back(
-    message: Message,
-):
-    if not is_admin(message.from_user.id):
-        return
-
-    await message.answer(
-        "Главное меню.",
-        reply_markup=get_admin_only_keyboard(),
-    )
+    await callback.answer()
 
 
-# ---------------------------------------------------------------------------
-# Одобрение врача
-# ---------------------------------------------------------------------------
+# ============================================================
+# ОДОБРЕНИЕ
+# ============================================================
 
-@router.callback_query(
-    F.data.startswith("adm_approve:")
-)
-async def approve_doctor(
-    callback: CallbackQuery,
-):
+@router.callback_query(F.data.startswith("adm_approve:"))
+async def approve_doctor(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer(
             "Недостаточно прав.",
@@ -215,15 +214,6 @@ async def approve_doctor(
     doctor_id = int(
         callback.data.split(":")[1]
     )
-
-    doctor = await db.get_doctor(doctor_id)
-
-    if not doctor:
-        await callback.answer(
-            "Врач не найден.",
-            show_alert=True,
-        )
-        return
 
     await db.set_doctor_status(
         doctor_id,
@@ -232,37 +222,29 @@ async def approve_doctor(
 
     await callback.message.edit_text(
         callback.message.html_text
-        + "\n\n"
-        "✅ <b>Заявка одобрена.</b>",
+        + "\n\n✅ <b>Заявка одобрена.</b>",
         reply_markup=None,
     )
 
-    await callback.answer(
-        "Врач одобрен."
-    )
+    await callback.answer("Одобрено")
 
     try:
         await callback.bot.send_message(
             doctor_id,
-            "✅ <b>Ваша заявка врача одобрена!</b>\n\n"
-            "Теперь вы зарегистрированы как "
-            "подтверждённый врач.",
+            "✅ Ваша заявка на регистрацию врача "
+            "одобрена администратором!\n\n"
+            "Теперь вам доступен список пациентов.",
         )
-
     except Exception:
         pass
 
 
-# ---------------------------------------------------------------------------
-# Отклонение врача
-# ---------------------------------------------------------------------------
+# ============================================================
+# ОТКЛОНЕНИЕ
+# ============================================================
 
-@router.callback_query(
-    F.data.startswith("adm_reject:")
-)
-async def reject_doctor(
-    callback: CallbackQuery,
-):
+@router.callback_query(F.data.startswith("adm_reject:"))
+async def reject_doctor(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer(
             "Недостаточно прав.",
@@ -274,50 +256,37 @@ async def reject_doctor(
         callback.data.split(":")[1]
     )
 
-    doctor = await db.get_doctor(doctor_id)
-
-    if not doctor:
-        await callback.answer(
-            "Врач не найден.",
-            show_alert=True,
-        )
-        return
-
-    await db.set_doctor_status(
-        doctor_id,
-        "rejected",
-    )
+    # Важный момент:
+    # отклонённый врач удаляется из БД.
+    # Поэтому ему придётся регистрироваться заново.
+    await db.delete_doctor(doctor_id)
 
     await callback.message.edit_text(
         callback.message.html_text
-        + "\n\n"
-        "❌ <b>Заявка отклонена.</b>",
+        + "\n\n❌ <b>Заявка отклонена.</b>\n"
+        "Врач удалён из базы.",
         reply_markup=None,
     )
 
-    await callback.answer(
-        "Заявка отклонена."
-    )
+    await callback.answer("Заявка отклонена")
 
     try:
         await callback.bot.send_message(
             doctor_id,
-            "❌ <b>Ваша заявка врача отклонена.</b>\n\n"
-            "При необходимости вы можете "
+            "❌ Ваша заявка на регистрацию врача "
+            "была отклонена администратором.\n\n"
+            "Для повторной попытки необходимо "
             "пройти регистрацию врача заново.",
         )
-
     except Exception:
         pass
 
 
-# ---------------------------------------------------------------------------
-# Удаление подтверждённого врача
-# ---------------------------------------------------------------------------
+# ============================================================
+# УДАЛЕНИЕ ПОДТВЕРЖДЁННОГО ВРАЧА
+# ============================================================
 
-@router.callback_query(
-    F.data.startswith("adm_delete:")
-)
+@router.callback_query(F.data.startswith("adm_delete:"))
 async def delete_doctor_callback(
     callback: CallbackQuery,
 ):
@@ -332,44 +301,20 @@ async def delete_doctor_callback(
         callback.data.split(":")[1]
     )
 
-    doctor = await db.get_doctor(doctor_id)
-
-    if not doctor:
-        await callback.answer(
-            "Врач уже удалён.",
-            show_alert=True,
-        )
-        return
-
-    await db.delete_doctor(
-        doctor_id
-    )
+    await db.delete_doctor(doctor_id)
 
     await callback.message.edit_text(
         callback.message.html_text
-        + "\n\n"
-        "🗑 <b>Врач удалён из базы.</b>",
+        + "\n\n🗑 <b>Врач удалён из базы.</b>",
         reply_markup=None,
     )
 
-    await callback.answer(
-        "Врач удалён."
-    )
-
-    try:
-        await callback.bot.send_message(
-            doctor_id,
-            "ℹ️ Ваша регистрация врача "
-            "была удалена администратором.",
-        )
-
-    except Exception:
-        pass
+    await callback.answer("Врач удалён")
 
 
-# ---------------------------------------------------------------------------
-# Уведомление администраторов о новой заявке
-# ---------------------------------------------------------------------------
+# ============================================================
+# УВЕДОМЛЕНИЕ АДМИНОВ
+# ============================================================
 
 async def notify_admins_new_doctor(
     bot: Bot,
@@ -379,24 +324,17 @@ async def notify_admins_new_doctor(
     if not ADMIN_IDS:
         return
 
-    if not doctor:
-        return
-
     text, builder = build_doctor_card(
         doctor,
-        prefix=(
-            "🆕 <b>Новая заявка врача</b>\n\n"
-        ),
+        prefix="🆕 <b>Новая заявка врача</b>\n\n",
     )
 
     for admin_id in ADMIN_IDS:
-
         try:
             await bot.send_message(
                 admin_id,
                 text,
                 reply_markup=builder.as_markup(),
             )
-
         except Exception:
             pass
