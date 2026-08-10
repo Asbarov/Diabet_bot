@@ -13,7 +13,12 @@ from keyboards.keyboards import (
     get_doctor_menu_keyboard,
     get_doctor_patient_menu_keyboard,
     remove_keyboard,
+    get_admin_only_keyboard,
 )
+
+from config import ADMIN_IDS
+
+
 from handlers.admin import notify_admins_new_doctor
 
 
@@ -156,7 +161,9 @@ async def process_experience(
         "✅ Анкета врача отправлена администратору.\n\n"
         "После одобрения вам станет доступен "
         "список пациентов.",
-        reply_markup=remove_keyboard,
+        reply_markup=get_doctor_menu_keyboard(
+            is_admin=message.from_user.id in ADMIN_IDS
+        ),
     )
 
 

@@ -5,25 +5,25 @@ from aiogram.types import (
 )
 
 
-ADMIN_BUTTON = KeyboardButton(text="🔧 Админ панель")
+ADMIN_BUTTON_TEXT = "🔧 Админ панель"
 
-
-# ============================================================
-# ВЫБОР РОЛИ
-# ============================================================
 
 def get_role_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
+    """
+    Клавиатура выбора роли при первом запуске.
+    Админская кнопка показывается дополнительно,
+    если Telegram ID пользователя есть в ADMIN_IDS.
+    """
+
     keyboard = [
-        [
-            KeyboardButton(text="🧑 Я пациент"),
-        ],
-        [
-            KeyboardButton(text="👨‍⚕️ Я врач"),
-        ],
+        [KeyboardButton(text="🧑 Я пациент")],
+        [KeyboardButton(text="👨‍⚕️ Я врач")],
     ]
 
     if is_admin:
-        keyboard.append([ADMIN_BUTTON])
+        keyboard.append(
+            [KeyboardButton(text=ADMIN_BUTTON_TEXT)]
+        )
 
     return ReplyKeyboardMarkup(
         keyboard=keyboard,
@@ -31,106 +31,13 @@ def get_role_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
     )
 
 
-role_keyboard = get_role_keyboard()
+# Для обратной совместимости
+role_keyboard = get_role_keyboard(False)
 
 
-# ============================================================
-# МЕНЮ ПАЦИЕНТА
-# ============================================================
-
-def get_patient_menu_keyboard(
-    is_admin: bool = False,
-) -> ReplyKeyboardMarkup:
-
-    keyboard = [
-        [
-            KeyboardButton(text="📚 Школа диабета"),
-        ],
-        [
-            KeyboardButton(text="👨‍⚕️ Связь с врачом"),
-        ],
-    ]
-
-    if is_admin:
-        keyboard.append([ADMIN_BUTTON])
-
-    return ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True,
-    )
-
-
-patient_menu_keyboard = get_patient_menu_keyboard()
-
-
-# ============================================================
-# МЕНЮ ВРАЧА
-# ============================================================
-
-def get_doctor_menu_keyboard(
-    is_admin: bool = False,
-) -> ReplyKeyboardMarkup:
-
-    keyboard = [
-        [
-            KeyboardButton(text="👥 Список пациентов"),
-        ],
-    ]
-
-    if is_admin:
-        keyboard.append([ADMIN_BUTTON])
-
-    return ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True,
-    )
-
-
-# ============================================================
-# МЕНЮ ВРАЧА + ПАЦИЕНТА
-# ============================================================
-
-def get_doctor_patient_menu_keyboard(
-    is_admin: bool = False,
-) -> ReplyKeyboardMarkup:
-
-    keyboard = [
-        [
-            KeyboardButton(text="📚 Школа диабета"),
-        ],
-        [
-            KeyboardButton(text="👨‍⚕️ Связь с врачом"),
-        ],
-        [
-            KeyboardButton(text="👥 Список пациентов"),
-        ],
-    ]
-
-    if is_admin:
-        keyboard.append([ADMIN_BUTTON])
-
-    return ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True,
-    )
-
-
-# ============================================================
-# ТОЛЬКО АДМИН
-# ============================================================
-
-def get_admin_only_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [ADMIN_BUTTON],
-        ],
-        resize_keyboard=True,
-    )
-
-
-# ============================================================
-# ПОЛ
-# ============================================================
+# ---------------------------------------------------------------------------
+# Пациент
+# ---------------------------------------------------------------------------
 
 gender_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -144,17 +51,13 @@ gender_keyboard = ReplyKeyboardMarkup(
 )
 
 
-# ============================================================
-# ТЕЛЕФОН
-# ============================================================
-
 phone_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
             KeyboardButton(
                 text="📱 Отправить номер телефона",
                 request_contact=True,
-            ),
+            )
         ],
     ],
     resize_keyboard=True,
@@ -162,8 +65,95 @@ phone_keyboard = ReplyKeyboardMarkup(
 )
 
 
-# ============================================================
-# УБРАТЬ КЛАВИАТУРУ
-# ============================================================
+def get_patient_menu_keyboard(
+    is_admin: bool = False,
+) -> ReplyKeyboardMarkup:
+    """
+    Главное меню пациента.
+
+    Если пользователь одновременно администратор,
+    кнопка админ-панели добавляется в это же меню.
+    """
+
+    keyboard = [
+        [KeyboardButton(text="📚 Школа диабета")],
+        [KeyboardButton(text="👨‍⚕️ Связь с врачом")],
+    ]
+
+    if is_admin:
+        keyboard.append(
+            [KeyboardButton(text=ADMIN_BUTTON_TEXT)]
+        )
+
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+    )
+
+def get_doctor_menu_keyboard(
+    is_admin: bool = False,
+) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(text="👥 Список пациентов")],
+    ]
+    if is_admin:
+        keyboard.append([KeyboardButton(text=ADMIN_BUTTON_TEXT)])
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+    )
+def get_doctor_patient_menu_keyboard(
+    is_admin: bool = False,
+) -> ReplyKeyboardMarkup:
+
+    keyboard = [
+        [KeyboardButton(text="📚 Школа диабета")],
+        [KeyboardButton(text="👨‍⚕️ Связь с врачом")],
+        [KeyboardButton(text="👥 Список пациентов")],
+    ]
+
+    if is_admin:
+        keyboard.append([KeyboardButton(text=ADMIN_BUTTON_TEXT)])
+
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+    )
+# Для обратной совместимости
+patient_menu_keyboard = get_patient_menu_keyboard(False)
+
+
+# ---------------------------------------------------------------------------
+# Пользователь, который пока не пациент, но является админом
+# ---------------------------------------------------------------------------
+
+def get_admin_only_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=ADMIN_BUTTON_TEXT)]
+        ],
+        resize_keyboard=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Админ-панель
+# ---------------------------------------------------------------------------
+
+def admin_menu_keyboard() -> ReplyKeyboardMarkup:
+    """
+    Меню администратора после нажатия
+    кнопки «🔧 Админ панель».
+    """
+
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="👨‍⚕️ Список врачей")],
+            [KeyboardButton(text="📥 Заявки врачей")],
+            [KeyboardButton(text="⬅️ Назад")],
+        ],
+        resize_keyboard=True,
+    )
+
 
 remove_keyboard = ReplyKeyboardRemove()

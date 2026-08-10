@@ -12,8 +12,12 @@ from keyboards.keyboards import (
 )
 from database import db
 
+from config import ADMIN_IDS
+
+from keyboards.keyboards import get_patient_menu_keyboard
 
 router = Router(name="patient")
+
 
 
 # ============================================================
@@ -295,7 +299,9 @@ async def finish_patient_registration(
         f"⚖️ Вес: {data['weight']} кг\n"
         f"💊 Терапия: {data['therapy']}\n"
         f"📞 Телефон: {phone}",
-        reply_markup=patient_menu_keyboard,
+        reply_markup=get_patient_menu_keyboard(
+            is_admin=message.from_user.id in ADMIN_IDS
+        ),
     )
 
 
