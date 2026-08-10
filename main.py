@@ -26,9 +26,13 @@ async def main() -> None:
     # Порядок важен: сначала общий /start и выбор роли,
     # затем FSM-обработчики регистрации пациента и врача.
     dp.include_router(start.router)
+
     dp.include_router(admin.router)
+
     dp.include_router(patient_reg.router)
+
     dp.include_router(doctor_reg.router)
+
     dp.include_router(school.router)
 
     logging.info("Бот запускается...")
