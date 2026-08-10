@@ -1,5 +1,6 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 
 from states.states import PatientRegistration
@@ -11,12 +12,15 @@ from keyboards.keyboards import (
 )
 from database import db
 
-router = Router(name="patient_registration")
+
+router = Router(name="patient")
 
 
-@router.message(
-    PatientRegistration.full_name
-)
+# ============================================================
+# РЕГИСТРАЦИЯ
+# ============================================================
+
+@router.message(PatientRegistration.full_name)
 async def process_full_name(
     message: Message,
     state: FSMContext,
@@ -25,18 +29,12 @@ async def process_full_name(
 
     if not name or len(name) < 2:
         await message.answer(
-            "Пожалуйста, введите корректное имя "
-            "(минимум 2 символа)."
+            "Пожалуйста, введите корректное имя."
         )
         return
 
-    await state.update_data(
-        full_name=name
-    )
-
-    await state.set_state(
-        PatientRegistration.gender
-    )
+    await state.update_data(full_name=name)
+    await state.set_state(PatientRegistration.gender)
 
     await message.answer(
         "Укажите ваш пол:",
@@ -52,13 +50,9 @@ async def process_gender(
     message: Message,
     state: FSMContext,
 ):
-    await state.update_data(
-        gender=message.text
-    )
+    await state.update_data(gender=message.text)
 
-    await state.set_state(
-        PatientRegistration.age
-    )
+    await state.set_state(PatientRegistration.age)
 
     await message.answer(
         "Сколько вам лет?",
@@ -66,199 +60,143 @@ async def process_gender(
     )
 
 
-@router.message(
-    PatientRegistration.gender
-)
-async def process_gender_invalid(
-    message: Message,
-):
+@router.message(PatientRegistration.gender)
+async def process_gender_invalid(message: Message):
     await message.answer(
-        "Пожалуйста, выберите пол, "
-        "используя кнопки ниже.",
+        "Пожалуйста, выберите вариант с помощью кнопок.",
         reply_markup=gender_keyboard,
     )
 
 
-@router.message(
-    PatientRegistration.age
-)
+@router.message(PatientRegistration.age)
 async def process_age(
     message: Message,
     state: FSMContext,
 ):
     try:
-        age = int(
-            (message.text or "").strip()
-        )
+        age = int((message.text or "").strip())
 
-        if not (0 < age < 120):
+        if not 1 <= age <= 120:
             raise ValueError
 
     except ValueError:
         await message.answer(
-            "Пожалуйста, введите возраст "
-            "цифрами (например, 34)."
+            "Введите возраст цифрами, например: 34."
         )
         return
 
     await state.update_data(age=age)
-
-    await state.set_state(
-        PatientRegistration.city
-    )
+    await state.set_state(PatientRegistration.city)
 
     await message.answer(
         "В каком городе вы проживаете?"
     )
 
 
-@router.message(
-    PatientRegistration.city
-)
+@router.message(PatientRegistration.city)
 async def process_city(
     message: Message,
     state: FSMContext,
 ):
     city = (message.text or "").strip()
 
-    if not city or len(city) < 2:
+    if len(city) < 2:
         await message.answer(
-            "Пожалуйста, введите название города."
+            "Пожалуйста, укажите город."
         )
         return
 
-    await state.update_data(
-        city=city
-    )
-
-    await state.set_state(
-        PatientRegistration.diabetes_years
-    )
+    await state.update_data(city=city)
+    await state.set_state(PatientRegistration.diabetes_years)
 
     await message.answer(
-        "Какой у вас стаж диабета "
-        "(полных лет)?"
+        "Какой у вас стаж диабета в полных годах?"
     )
 
 
-@router.message(
-    PatientRegistration.diabetes_years
-)
+@router.message(PatientRegistration.diabetes_years)
 async def process_diabetes_years(
     message: Message,
     state: FSMContext,
 ):
     try:
-        years = int(
-            (message.text or "").strip()
-        )
+        years = int((message.text or "").strip())
 
-        if not (0 <= years < 100):
+        if not 0 <= years <= 100:
             raise ValueError
 
     except ValueError:
         await message.answer(
-            "Пожалуйста, введите стаж диабета "
-            "числом лет (например, 5)."
+            "Введите количество лет цифрами."
         )
         return
 
-    await state.update_data(
-        diabetes_years=years
-    )
-
-    await state.set_state(
-        PatientRegistration.height
-    )
+    await state.update_data(diabetes_years=years)
+    await state.set_state(PatientRegistration.height)
 
     await message.answer(
-        "Укажите ваш рост в см "
-        "(например, 170):"
+        "Укажите ваш рост в сантиметрах.\n"
+        "Например: 170"
     )
 
 
-@router.message(
-    PatientRegistration.height
-)
+@router.message(PatientRegistration.height)
 async def process_height(
     message: Message,
     state: FSMContext,
 ):
     try:
         height = float(
-            (message.text or "")
-            .strip()
-            .replace(",", ".")
+            (message.text or "").strip().replace(",", ".")
         )
 
-        if not (50 <= height <= 250):
+        if not 50 <= height <= 250:
             raise ValueError
 
     except ValueError:
         await message.answer(
-            "Пожалуйста, введите рост "
-            "в сантиметрах числом."
+            "Введите рост числом, например: 170."
         )
         return
 
-    await state.update_data(
-        height=height
-    )
-
-    await state.set_state(
-        PatientRegistration.weight
-    )
+    await state.update_data(height=height)
+    await state.set_state(PatientRegistration.weight)
 
     await message.answer(
-        "Укажите ваш вес в кг "
-        "(например, 65):"
+        "Укажите ваш вес в килограммах.\n"
+        "Например: 65"
     )
 
 
-@router.message(
-    PatientRegistration.weight
-)
+@router.message(PatientRegistration.weight)
 async def process_weight(
     message: Message,
     state: FSMContext,
 ):
     try:
         weight = float(
-            (message.text or "")
-            .strip()
-            .replace(",", ".")
+            (message.text or "").strip().replace(",", ".")
         )
 
-        if not (2 <= weight <= 400):
+        if not 2 <= weight <= 400:
             raise ValueError
 
     except ValueError:
         await message.answer(
-            "Пожалуйста, введите вес "
-            "в килограммах числом."
+            "Введите вес числом, например: 65."
         )
         return
 
-    await state.update_data(
-        weight=weight
-    )
-
-    await state.set_state(
-        PatientRegistration.therapy
-    )
+    await state.update_data(weight=weight)
+    await state.set_state(PatientRegistration.therapy)
 
     await message.answer(
-        "Какую терапию (препараты) "
-        "вы получаете?\n\n"
-        "Например: "
-        "«Инсулин НовоРапид + Тресиба» "
-        "или «Метформин»."
+        "Какую терапию вы получаете?\n"
+        "Например: Инсулин НовоРапид + Тресиба"
     )
 
 
-@router.message(
-    PatientRegistration.therapy
-)
+@router.message(PatientRegistration.therapy)
 async def process_therapy(
     message: Message,
     state: FSMContext,
@@ -267,22 +205,15 @@ async def process_therapy(
 
     if not therapy:
         await message.answer(
-            "Пожалуйста, укажите препараты терапии."
+            "Пожалуйста, укажите терапию."
         )
         return
 
-    await state.update_data(
-        therapy=therapy
-    )
-
-    await state.set_state(
-        PatientRegistration.phone
-    )
+    await state.update_data(therapy=therapy)
+    await state.set_state(PatientRegistration.phone)
 
     await message.answer(
-        "И последний шаг — поделитесь "
-        "номером телефона, нажав кнопку ниже, "
-        "или введите его вручную.",
+        "Последний шаг — поделитесь номером телефона:",
         reply_markup=phone_keyboard,
     )
 
@@ -314,16 +245,9 @@ async def process_phone_text(
 ):
     phone = (message.text or "").strip()
 
-    digits = "".join(
-        ch
-        for ch in phone
-        if ch.isdigit() or ch == "+"
-    )
-
-    if len(digits) < 7:
+    if len(phone) < 7:
         await message.answer(
-            "Похоже, номер введён некорректно.\n\n"
-            "Например: +79991234567",
+            "Пожалуйста, введите корректный номер телефона.",
             reply_markup=phone_keyboard,
         )
         return
@@ -331,7 +255,7 @@ async def process_phone_text(
     await finish_patient_registration(
         message,
         state,
-        digits,
+        phone,
     )
 
 
@@ -342,13 +266,10 @@ async def finish_patient_registration(
 ):
     data = await state.get_data()
 
-    user_id = message.from_user.id
-
     username = message.from_user.username
 
     await db.add_patient(
-        user_id=user_id,
-        username=username,
+        user_id=message.from_user.id,
         full_name=data["full_name"],
         gender=data["gender"],
         age=data["age"],
@@ -358,23 +279,76 @@ async def finish_patient_registration(
         weight_kg=data["weight"],
         therapy=data["therapy"],
         phone=phone,
+        username=username,
     )
 
     await state.clear()
 
     await message.answer(
-        "✅ <b>Регистрация завершена!</b>\n\n"
-        "Карта пациента сохранена.\n\n"
+        "✅ Регистрация завершена!\n\n"
         f"👤 Имя: {data['full_name']}\n"
         f"⚧ Пол: {data['gender']}\n"
         f"🎂 Возраст: {data['age']}\n"
         f"🏙 Город: {data['city']}\n"
-        f"📅 Стаж диабета: "
-        f"{data['diabetes_years']} лет\n"
+        f"📅 Стаж диабета: {data['diabetes_years']} лет\n"
         f"📏 Рост: {data['height']} см\n"
         f"⚖️ Вес: {data['weight']} кг\n"
         f"💊 Терапия: {data['therapy']}\n"
-        f"📞 Телефон: {phone}\n\n"
-        "Теперь вам доступны основные функции бота.",
+        f"📞 Телефон: {phone}",
         reply_markup=patient_menu_keyboard,
+    )
+
+
+# ============================================================
+# СВЯЗЬ С ВРАЧОМ
+# ============================================================
+
+def doctors_keyboard(doctors):
+    builder = InlineKeyboardBuilder()
+
+    for doctor in doctors:
+        username = doctor["username"]
+
+        if username:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"👨‍⚕️ {doctor['full_name']}",
+                    url=f"https://t.me/{username}",
+                )
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"👨‍⚕️ {doctor['full_name']}",
+                    callback_data=f"doctor_no_username:{doctor['user_id']}",
+                )
+            )
+
+    return builder.as_markup()
+
+
+@router.message(F.text == "👨‍⚕️ Связь с врачом")
+async def contact_doctor(message: Message):
+    doctors = await db.list_approved_doctors()
+
+    if not doctors:
+        await message.answer(
+            "👨‍⚕️ Сейчас нет подтверждённых врачей."
+        )
+        return
+
+    await message.answer(
+        "👨‍⚕️ <b>Выберите врача</b>\n\n"
+        "Нажмите на врача, чтобы открыть чат в Telegram.",
+        reply_markup=doctors_keyboard(doctors),
+    )
+
+
+@router.callback_query(
+    F.data.startswith("doctor_no_username:")
+)
+async def doctor_without_username(callback):
+    await callback.answer(
+        "У этого врача не указан Telegram username.",
+        show_alert=True,
     )

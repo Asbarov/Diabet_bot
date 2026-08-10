@@ -9,7 +9,6 @@ from config import DB_PATH
 CREATE_PATIENTS_TABLE = """
 CREATE TABLE IF NOT EXISTS patients (
     user_id           INTEGER PRIMARY KEY,
-    username          TEXT,
     full_name         TEXT NOT NULL,
     gender            TEXT NOT NULL,
     age               INTEGER NOT NULL,
@@ -19,6 +18,7 @@ CREATE TABLE IF NOT EXISTS patients (
     weight_kg         REAL NOT NULL,
     therapy           TEXT NOT NULL,
     phone             TEXT NOT NULL,
+    username          TEXT,
     registered_at     TEXT NOT NULL
 );
 """
@@ -27,59 +27,36 @@ CREATE TABLE IF NOT EXISTS patients (
 CREATE_DOCTORS_TABLE = """
 CREATE TABLE IF NOT EXISTS doctors (
     user_id            INTEGER PRIMARY KEY,
-    username           TEXT,
     full_name          TEXT NOT NULL,
     city               TEXT NOT NULL,
     workplace          TEXT NOT NULL,
     specialty          TEXT NOT NULL,
     experience_years   INTEGER NOT NULL,
     status             TEXT NOT NULL DEFAULT 'pending',
+    username           TEXT,
     registered_at      TEXT NOT NULL
 );
 """
 
 
 async def init_db() -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(CREATE_PATIENTS_TABLE)
-        await db.execute(CREATE_DOCTORS_TABLE)
+    async with aiosqlite.connect(DB_PATH) as database:
+        await database.execute(CREATE_PATIENTS_TABLE)
+        await database.execute(CREATE_DOCTORS_TABLE)
 
-        # Миграция старой базы:
-        # если таблицы были созданы раньше без username,
-        # добавляем это поле.
-        await add_column_if_missing(
-            db,
-            "patients",
-            "username",
-            "TEXT",
-        )
+        # Добавляем новые колонки в старую БД, если их ещё нет.
+        for table in ("patients", "doctors"):
+            async with database.execute(f"PRAGMA table_info({table})") as cursor:
+                columns = await cursor.fetchall()
 
-        await add_column_if_missing(
-            db,
-            "doctors",
-            "username",
-            "TEXT",
-        )
+            column_names = {row[1] for row in columns}
 
-        await db.commit()
+            if "username" not in column_names:
+                await database.execute(
+                    f"ALTER TABLE {table} ADD COLUMN username TEXT"
+                )
 
-
-async def add_column_if_missing(
-    db: aiosqlite.Connection,
-    table_name: str,
-    column_name: str,
-    column_type: str,
-) -> None:
-    async with db.execute(f"PRAGMA table_info({table_name})") as cursor:
-        columns = await cursor.fetchall()
-
-    existing_columns = {column[1] for column in columns}
-
-    if column_name not in existing_columns:
-        await db.execute(
-            f"ALTER TABLE {table_name} "
-            f"ADD COLUMN {column_name} {column_type}"
-        )
+        await database.commit()
 
 
 # ============================================================
@@ -87,10 +64,10 @@ async def add_column_if_missing(
 # ============================================================
 
 async def get_patient(user_id: int) -> Optional[aiosqlite.Row]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with aiosqlite.connect(DB_PATH) as database:
+        database.row_factory = aiosqlite.Row
 
-        async with db.execute(
+        async with database.execute(
             "SELECT * FROM patients WHERE user_id = ?",
             (user_id,),
         ) as cursor:
@@ -99,7 +76,6 @@ async def get_patient(user_id: int) -> Optional[aiosqlite.Row]:
 
 async def add_patient(
     user_id: int,
-    username: Optional[str],
     full_name: str,
     gender: str,
     age: int,
@@ -109,13 +85,18 @@ async def add_patient(
     weight_kg: float,
     therapy: str,
     phone: str,
+    username: Optional[str] = None,
 ) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+
+    registered_at = datetime.datetime.utcnow().isoformat(
+        timespec="seconds"
+    )
+
+    async with aiosqlite.connect(DB_PATH) as database:
+        await database.execute(
             """
             INSERT OR REPLACE INTO patients (
                 user_id,
-                username,
                 full_name,
                 gender,
                 age,
@@ -125,13 +106,13 @@ async def add_patient(
                 weight_kg,
                 therapy,
                 phone,
+                username,
                 registered_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
-                username,
                 full_name,
                 gender,
                 age,
@@ -141,20 +122,19 @@ async def add_patient(
                 weight_kg,
                 therapy,
                 phone,
-                datetime.datetime.utcnow().isoformat(
-                    timespec="seconds"
-                ),
+                username,
+                registered_at,
             ),
         )
 
-        await db.commit()
+        await database.commit()
 
 
 async def list_all_patients() -> list[aiosqlite.Row]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with aiosqlite.connect(DB_PATH) as database:
+        database.row_factory = aiosqlite.Row
 
-        async with db.execute(
+        async with database.execute(
             """
             SELECT *
             FROM patients
@@ -169,10 +149,10 @@ async def list_all_patients() -> list[aiosqlite.Row]:
 # ============================================================
 
 async def get_doctor(user_id: int) -> Optional[aiosqlite.Row]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with aiosqlite.connect(DB_PATH) as database:
+        database.row_factory = aiosqlite.Row
 
-        async with db.execute(
+        async with database.execute(
             "SELECT * FROM doctors WHERE user_id = ?",
             (user_id,),
         ) as cursor:
@@ -181,51 +161,54 @@ async def get_doctor(user_id: int) -> Optional[aiosqlite.Row]:
 
 async def add_doctor(
     user_id: int,
-    username: Optional[str],
     full_name: str,
     city: str,
     workplace: str,
     specialty: str,
     experience_years: int,
+    username: Optional[str] = None,
 ) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+
+    registered_at = datetime.datetime.utcnow().isoformat(
+        timespec="seconds"
+    )
+
+    async with aiosqlite.connect(DB_PATH) as database:
+        await database.execute(
             """
             INSERT OR REPLACE INTO doctors (
                 user_id,
-                username,
                 full_name,
                 city,
                 workplace,
                 specialty,
                 experience_years,
                 status,
+                username,
                 registered_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
             """,
             (
                 user_id,
-                username,
                 full_name,
                 city,
                 workplace,
                 specialty,
                 experience_years,
-                datetime.datetime.utcnow().isoformat(
-                    timespec="seconds"
-                ),
+                username,
+                registered_at,
             ),
         )
 
-        await db.commit()
+        await database.commit()
 
 
 async def list_approved_doctors() -> list[aiosqlite.Row]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with aiosqlite.connect(DB_PATH) as database:
+        database.row_factory = aiosqlite.Row
 
-        async with db.execute(
+        async with database.execute(
             """
             SELECT *
             FROM doctors
@@ -237,10 +220,10 @@ async def list_approved_doctors() -> list[aiosqlite.Row]:
 
 
 async def get_pending_doctors() -> list[aiosqlite.Row]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with aiosqlite.connect(DB_PATH) as database:
+        database.row_factory = aiosqlite.Row
 
-        async with db.execute(
+        async with database.execute(
             """
             SELECT *
             FROM doctors
@@ -252,14 +235,15 @@ async def get_pending_doctors() -> list[aiosqlite.Row]:
 
 
 async def list_all_doctors() -> list[aiosqlite.Row]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with aiosqlite.connect(DB_PATH) as database:
+        database.row_factory = aiosqlite.Row
 
-        async with db.execute(
+        async with database.execute(
             """
             SELECT *
             FROM doctors
-            ORDER BY status, full_name
+            WHERE status = 'approved'
+            ORDER BY full_name
             """
         ) as cursor:
             return await cursor.fetchall()
@@ -269,8 +253,9 @@ async def set_doctor_status(
     user_id: int,
     status: str,
 ) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+
+    async with aiosqlite.connect(DB_PATH) as database:
+        await database.execute(
             """
             UPDATE doctors
             SET status = ?
@@ -279,14 +264,23 @@ async def set_doctor_status(
             (status, user_id),
         )
 
-        await db.commit()
+        await database.commit()
 
 
 async def delete_doctor(user_id: int) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+    async with aiosqlite.connect(DB_PATH) as database:
+        await database.execute(
             "DELETE FROM doctors WHERE user_id = ?",
             (user_id,),
         )
 
-        await db.commit()
+        await database.commit()
+
+async def list_all_patients() -> list[aiosqlite.Row]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute(
+            "SELECT * FROM patients ORDER BY full_name"
+        ) as cursor:
+            return await cursor.fetchall()

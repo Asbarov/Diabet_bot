@@ -1,14 +1,4 @@
-from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import ADMIN_IDS
-from database import db
-
-from keyboards.keyboards import (
-    admin_menu_keyboard,
-    get_admin_only_keyboard,
-)
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -21,6 +11,7 @@ router = Router(name="admin")
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
+
 
 
 STATUS_LABELS = {
@@ -110,6 +101,10 @@ async def admin_panel_button(message: Message):
         callback_data="adm_menu:all",
     )
 
+    builder.button(
+        text="👤 Список пациентов",
+        callback_data="adm_menu:patients"
+    )
     builder.adjust(1)
 
     await message.answer(
@@ -118,10 +113,56 @@ async def admin_panel_button(message: Message):
         reply_markup=builder.as_markup(),
     )
 
-
 # ============================================================
 # ЗАЯВКИ ВРАЧЕЙ
 # ============================================================
+
+@router.callback_query(F.data == "adm_menu:patients")
+async def admin_menu_patients(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    patients = await db.list_all_patients()
+
+    if not patients:
+        await callback.message.edit_text(
+            "👤 Зарегистрированных пациентов пока нет."
+        )
+        await callback.answer()
+        return
+
+    await callback.message.edit_text(
+        f"👤 <b>Список пациентов</b>\n\n"
+        f"Всего пациентов: {len(patients)}"
+    )
+
+    for patient in patients:
+        text = (
+            f"👤 <b>{patient['full_name']}</b>\n\n"
+            f"⚧ Пол: {patient['gender']}\n"
+            f"🎂 Возраст: {patient['age']}\n"
+            f"🏙 Город: {patient['city']}\n"
+            f"📅 Стаж диабета: {patient['diabetes_years']} лет\n"
+            f"📏 Рост: {patient['height_cm']} см\n"
+            f"⚖️ Вес: {patient['weight_kg']} кг\n"
+            f"💊 Терапия: {patient['therapy']}\n"
+            f"📞 Телефон: {patient['phone']}\n"
+            f"🆔 ID: <code>{patient['user_id']}</code>"
+        )
+
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="🔗 Открыть Telegram",
+            url=f"tg://user?id={patient['user_id']}"
+        )
+
+        await callback.message.answer(
+            text,
+            reply_markup=builder.as_markup()
+        )
+
+    await callback.answer()
 
 @router.callback_query(F.data == "adm_menu:pending")
 async def admin_menu_pending(callback: CallbackQuery):
@@ -338,3 +379,4 @@ async def notify_admins_new_doctor(
             )
         except Exception:
             pass
+
