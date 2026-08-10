@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 
@@ -7,21 +7,18 @@ from states.states import PatientRegistration
 from keyboards.keyboards import (
     gender_keyboard,
     phone_keyboard,
-    patient_menu_keyboard,
     remove_keyboard,
+    get_patient_menu_keyboard,
 )
 from database import db
-
 from config import ADMIN_IDS
 
-from keyboards.keyboards import get_patient_menu_keyboard
 
 router = Router(name="patient")
 
 
-
 # ============================================================
-# РЕГИСТРАЦИЯ
+# РЕГИСТРАЦИЯ ПАЦИЕНТА
 # ============================================================
 
 @router.message(PatientRegistration.full_name)
@@ -31,7 +28,7 @@ async def process_full_name(
 ):
     name = (message.text or "").strip()
 
-    if not name or len(name) < 2:
+    if len(name) < 2:
         await message.answer(
             "Пожалуйста, введите корректное имя."
         )
@@ -270,7 +267,18 @@ async def finish_patient_registration(
 ):
     data = await state.get_data()
 
+    # Telegram username пациента
     username = message.from_user.username
+
+    # Перепроверяем на всякий случай: username мог быть на старте
+    # регистрации, но пользователь мог убрать его в настройках
+    # Telegram прямо посреди заполнения анкеты. Без username ссылка
+    # t.me/<username> в карточке пациента у врача не будет работать.
+    if not username:
+        from handlers.start import NO_USERNAME_TEXT
+        await state.clear()
+        await message.answer(NO_USERNAME_TEXT)
+        return
 
     await db.add_patient(
         user_id=message.from_user.id,
@@ -288,6 +296,9 @@ async def finish_patient_registration(
 
     await state.clear()
 
+    # После регистрации возвращаем нормальное меню.
+    # Если пользователь одновременно админ —
+    # кнопка админ-панели останется.
     await message.answer(
         "✅ Регистрация завершена!\n\n"
         f"👤 Имя: {data['full_name']}\n"
@@ -298,7 +309,8 @@ async def finish_patient_registration(
         f"📏 Рост: {data['height']} см\n"
         f"⚖️ Вес: {data['weight']} кг\n"
         f"💊 Терапия: {data['therapy']}\n"
-        f"📞 Телефон: {phone}",
+        f"📞 Телефон: {phone}\n\n"
+        "Теперь вам доступны основные функции бота.",
         reply_markup=get_patient_menu_keyboard(
             is_admin=message.from_user.id in ADMIN_IDS
         ),
@@ -309,32 +321,76 @@ async def finish_patient_registration(
 # СВЯЗЬ С ВРАЧОМ
 # ============================================================
 
-def doctors_keyboard(doctors):
+def doctor_card_keyboard(doctor):
+    """
+    Создаёт кнопку для карточки врача.
+
+    Если у врача есть username:
+        открывается https://t.me/username
+
+    Если username нет:
+        показываем callback и сообщаем пациенту,
+        что открыть чат через username невозможно.
+    """
+
     builder = InlineKeyboardBuilder()
 
-    for doctor in doctors:
-        username = doctor["username"]
+    username = doctor["username"]
 
-        if username:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"👨‍⚕️ {doctor['full_name']}",
-                    url=f"https://t.me/{username}",
-                )
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"👨‍⚕️ {doctor['full_name']}",
-                    callback_data=f"doctor_no_username:{doctor['user_id']}",
-                )
-            )
+    if username:
+        username = username.lstrip("@")
+
+        builder.button(
+            text="💬 Написать врачу",
+            url=f"https://t.me/{username}",
+        )
+    else:
+        builder.button(
+            text="⚠️ Telegram-ссылка недоступна",
+            callback_data=f"doctor_no_username:{doctor['user_id']}",
+        )
 
     return builder.as_markup()
 
 
+def format_doctor_card(doctor) -> str:
+    """
+    Текст карточки врача.
+    """
+
+    experience = doctor["experience_years"]
+
+    if experience == 1:
+        years_text = "1 год"
+    elif 2 <= experience <= 4:
+        years_text = f"{experience} года"
+    else:
+        years_text = f"{experience} лет"
+
+    return (
+        "👨‍⚕️ <b>Врач-эндокринолог</b>\n\n"
+        f"👤 <b>{doctor['full_name']}</b>\n"
+        f"🏙 Город: {doctor['city']}\n"
+        f"🏥 Место работы: {doctor['workplace']}\n"
+        f"🩺 Специальность: {doctor['specialty']}\n"
+        f"📅 Опыт работы: {years_text}\n\n"
+        "💬 Чтобы связаться с врачом, "
+        "нажмите кнопку ниже."
+    )
+
+
 @router.message(F.text == "👨‍⚕️ Связь с врачом")
 async def contact_doctor(message: Message):
+    """
+    Показывает список всех одобренных врачей.
+
+    Каждый врач отправляется отдельной карточкой.
+    В каждой карточке есть кнопка:
+        💬 Написать врачу
+
+    Кнопка открывает личный Telegram-чат с врачом.
+    """
+
     doctors = await db.list_approved_doctors()
 
     if not doctors:
@@ -344,17 +400,31 @@ async def contact_doctor(message: Message):
         return
 
     await message.answer(
-        "👨‍⚕️ <b>Выберите врача</b>\n\n"
-        "Нажмите на врача, чтобы открыть чат в Telegram.",
-        reply_markup=doctors_keyboard(doctors),
+        "👨‍⚕️ <b>Список врачей</b>\n\n"
+        "Выберите врача и нажмите "
+        "«💬 Написать врачу»."
     )
+
+    for doctor in doctors:
+        await message.answer(
+            format_doctor_card(doctor),
+            reply_markup=doctor_card_keyboard(doctor),
+        )
 
 
 @router.callback_query(
     F.data.startswith("doctor_no_username:")
 )
-async def doctor_without_username(callback):
+async def doctor_without_username(
+    callback: CallbackQuery,
+):
+    """
+    Если у врача нет username.
+    """
+
     await callback.answer(
-        "У этого врача не указан Telegram username.",
+        "У этого врача не указан Telegram username, "
+        "поэтому открыть чат по ссылке невозможно.",
         show_alert=True,
     )
+

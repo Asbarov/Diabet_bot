@@ -37,6 +37,16 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 
+NO_USERNAME_TEXT = (
+    "⚠️ Для регистрации нужен публичный <b>username</b> в Telegram — "
+    "по нему врачи и пациенты смогут перейти в чат с вами напрямую.\n\n"
+    "Как настроить:\n"
+    "1. Откройте Настройки → Имя пользователя в приложении Telegram.\n"
+    "2. Придумайте и сохраните username.\n"
+    "3. Вернитесь в этот чат и отправьте /start ещё раз."
+)
+
+
 def build_main_keyboard(
     patient,
     doctor,
@@ -155,6 +165,10 @@ async def choose_patient_role(
 ):
     from states.states import PatientRegistration
 
+    if not message.from_user.username:
+        await message.answer(NO_USERNAME_TEXT)
+        return
+
     await state.set_state(
         PatientRegistration.full_name
     )
@@ -175,6 +189,10 @@ async def choose_doctor_role(
     state: FSMContext,
 ):
     from states.states import DoctorRegistration
+
+    if not message.from_user.username:
+        await message.answer(NO_USERNAME_TEXT)
+        return
 
     await state.set_state(
         DoctorRegistration.full_name

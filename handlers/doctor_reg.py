@@ -136,6 +136,16 @@ async def process_experience(
 
     username = message.from_user.username
 
+    # Перепроверяем на всякий случай: username мог быть на старте
+    # регистрации, но пользователь мог убрать его в настройках
+    # Telegram прямо посреди заполнения анкеты. Без username ссылка
+    # t.me/<username> в карточке врача у пациента не будет работать.
+    if not username:
+        from handlers.start import NO_USERNAME_TEXT
+        await state.clear()
+        await message.answer(NO_USERNAME_TEXT)
+        return
+
     await db.add_doctor(
         user_id=message.from_user.id,
         full_name=data["full_name"],
