@@ -282,6 +282,16 @@ async def delete_doctor(user_id: int) -> None:
 
         await database.commit()
 
+
+async def delete_patient(user_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as database:
+        await database.execute(
+            "DELETE FROM patients WHERE user_id = ?",
+            (user_id,),
+        )
+
+        await database.commit()
+
 async def list_all_patients() -> list[aiosqlite.Row]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
