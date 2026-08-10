@@ -41,6 +41,12 @@ CREATE TABLE IF NOT EXISTS doctors (
 
 async def init_db() -> None:
     async with aiosqlite.connect(DB_PATH) as database:
+        # WAL позволяет читать базу, пока кто-то другой в неё пишет —
+        # без этого читатели блокируются на время записи (регистрация,
+        # одобрение заявки и т.п.). Настройка постоянная — сохраняется
+        # в самом файле базы, но выставить её лучше при каждом старте.
+        await database.execute("PRAGMA journal_mode=WAL")
+
         await database.execute(CREATE_PATIENTS_TABLE)
         await database.execute(CREATE_DOCTORS_TABLE)
 
