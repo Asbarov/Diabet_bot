@@ -3,3 +3,5 @@ __pycache__/
 *.рус
 .env
 *.sqlite3
+diabet_bot.db
+*.db

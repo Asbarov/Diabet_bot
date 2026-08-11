@@ -156,6 +156,11 @@ async def admin_menu_patients(callback: CallbackQuery):
             text="🔗 Открыть Telegram",
             url=f"tg://user?id={patient['user_id']}"
         )
+        builder.button(
+            text="🗑 Удалить пациента",
+            callback_data=f"adm_delete_patient:{patient['user_id']}"
+        )
+        builder.adjust(1)
 
         await callback.message.answer(
             text,
@@ -163,6 +168,32 @@ async def admin_menu_patients(callback: CallbackQuery):
         )
 
     await callback.answer()
+
+
+# ============================================================
+# УДАЛЕНИЕ ПАЦИЕНТА
+# ============================================================
+
+@router.callback_query(F.data.startswith("adm_delete_patient:"))
+async def delete_patient_callback(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer(
+            "Недостаточно прав.",
+            show_alert=True,
+        )
+        return
+
+    patient_id = int(callback.data.split(":")[1])
+
+    await db.delete_patient(patient_id)
+
+    await callback.message.edit_text(
+        callback.message.html_text
+        + "\n\n🗑 <b>Пациент удалён из базы.</b>",
+        reply_markup=None,
+    )
+
+    await callback.answer("Пациент удалён")
 
 @router.callback_query(F.data == "adm_menu:pending")
 async def admin_menu_pending(callback: CallbackQuery):
