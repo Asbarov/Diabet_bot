@@ -2,6 +2,8 @@
 __pycache__/
 *.рус
 .env
-*.sqlite3
 diabet_bot.db
+diabet_bot.db-shm
+diabet_bot.db-wal
 *.db
+
